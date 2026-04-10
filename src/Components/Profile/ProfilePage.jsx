@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
     ChevronLeft,
     Menu,
@@ -8,152 +8,125 @@ import {
     BarChart2,
     User,
     Languages,
-    ChevronRight
+    ChevronRight,
 } from 'lucide-react';
 import './ProfilePage.css';
 
-// ==========================================
-// ЗАГЛУШКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (MOCK DATA)
-// ==========================================
-// Используйте эту структуру данных для тестов в браузере.
-// Ссылка на аватарку ведет на бесплатное тестовое изображение с Unsplash.
-// Вы можете заменить URL на любой другой доступный.
+function buildProfileView(profile, telegramUser) {
+    const displayName = [profile?.name, profile?.surname].filter(Boolean).join(' ')
+        || telegramUser?.first_name
+        || 'Telegram User';
 
-const MOCK_USER_DATA = {
-    username: 'ivan_ivanov',
-    id: '77654321',
-    // URL-адрес аватарки пользователя (заглушка)
-    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
-    subscription: {
-        status: 'Premium Plus',
-        validUntil: '15.04.2026',
-        tokens: '45,500'
-    },
-    activity: {
-        totalRequests: '1,240',
-        joinedAt: '12.10.2025'
-    },
-    settings: {
-        language: 'Русский'
-    }
-};
+    return {
+        displayName,
+        username: profile?.username || telegramUser?.username || 'username_not_set',
+        telegramId: profile?.telegramId || (telegramUser?.id ? String(telegramUser.id) : '—'),
+        backendId: profile?.backendId || '—',
+        language: profile?.language || telegramUser?.language_code || 'ru',
+        avatarUrl: profile?.avatarUrl || '',
+    };
+}
 
-const ProfilePage = () => {
-    const [userData, setUserData] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+const ProfilePage = ({ appName, profile, telegramUser, startParam, statusMessage, isLoading }) => {
+    const userData = buildProfileView(profile, telegramUser);
+    const avatarLetter = (userData.displayName || userData.username).charAt(0).toUpperCase();
+    const statusColor = statusMessage?.includes('успешно') ? '#4ade80' : '#facc15';
 
-    // Имитация загрузки данных с бэкенда
-    useEffect(() => {
-        const fetchUserData = async () => {
-            try {
-                // ЗДЕСЬ БУДЕТ ВАШ API ЗАПРОС К БЭКЕНДУ
-                // Например: const response = await fetch('/api/user/profile');
-                //          const data = await response.json();
-
-                // Для теста используем таймаут и мок-данные
-                setTimeout(() => {
-                    setUserData(MOCK_USER_DATA);
-                    setIsLoading(false);
-                }, 800); // Имитация задержки сети
-            } catch (error) {
-                console.error("Ошибка при загрузке данных пользователя:", error);
-                setIsLoading(false);
-            }
-        };
-
-        fetchUserData();
-    }, []);
-
-    if (isLoading || !userData) {
+    if (isLoading) {
         return <div className="profile-loading">Загрузка профиля...</div>;
     }
 
     return (
         <div className="profile-page">
-            {/* Header */}
             <header className="profile-header-nav">
                 <button className="icon-btn" aria-label="Назад">
                     <ChevronLeft size={24} />
                 </button>
-                <h1 className="header-title">CyberMate</h1>
+                <h1 className="header-title">{appName}</h1>
                 <button className="icon-btn" aria-label="Меню">
                     <Menu size={24} />
                 </button>
             </header>
 
-            {/* Main Profile Info with Avatar */}
             <div className="profile-avatar-section">
-                {/* Контейнер для аватарки (заменяет старый логотип) */}
                 <div className="avatar-container">
-                    <img
-                        src={userData.avatarUrl}
-                        alt={`Аватарка пользователя @${userData.username}`}
-                        className="user-avatar"
-                    />
+                    {userData.avatarUrl ? (
+                        <img
+                            src={userData.avatarUrl}
+                            alt={`Аватар пользователя @${userData.username}`}
+                            className="user-avatar"
+                        />
+                    ) : (
+                        <div
+                            className="user-avatar"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: 'linear-gradient(135deg, #4ade80, #0ea5e9)',
+                                fontSize: '32px',
+                                fontWeight: '700',
+                            }}
+                        >
+                            {avatarLetter}
+                        </div>
+                    )}
                 </div>
-                <h2 className="username">@{userData.username}</h2>
-                <span className="user-id">ID: {userData.id}</span>
+                <h2 className="username">{userData.displayName}</h2>
+                <span className="user-id">TG ID: {userData.telegramId}</span>
             </div>
 
-            {/* Cards Section (без изменений) */}
             <div className="cards-container">
-
-                {/* Card: Подписка & Баланс */}
                 <div className="info-card">
-                    <div className="card-header-title">ПОДПИСКА & БАЛАНС</div>
+                    <div className="card-header-title">ПРОФИЛЬ</div>
 
                     <div className="card-row">
                         <div className="row-left">
-                            <Sparkles size={18} className="row-icon" />
-                            <span className="row-label">Статус</span>
+                            <User size={18} className="row-icon" />
+                            <span className="row-label">Имя</span>
                         </div>
-                        <div className="row-right">{userData.subscription.status}</div>
+                        <div className="row-right">{userData.displayName}</div>
                     </div>
                     <div className="divider"></div>
 
                     <div className="card-row">
                         <div className="row-left">
-                            <Clock size={18} className="row-icon" />
-                            <span className="row-label">Действует до</span>
+                            <Sparkles size={18} className="row-icon" />
+                            <span className="row-label">Username</span>
                         </div>
-                        <div className="row-right">{userData.subscription.validUntil}</div>
+                        <div className="row-right">@{userData.username}</div>
                     </div>
                     <div className="divider"></div>
 
                     <div className="card-row">
                         <div className="row-left">
                             <Key size={18} className="row-icon" />
-                            <span className="row-label">Токены</span>
+                            <span className="row-label">Backend ID</span>
                         </div>
-                        <div className="row-right">{userData.subscription.tokens}</div>
+                        <div className="row-right">{userData.backendId}</div>
                     </div>
                 </div>
 
-                {/* Card: Активность */}
                 <div className="info-card">
-                    <div className="card-header-title">АКТИВНОСТЬ</div>
+                    <div className="card-header-title">TELEGRAM MINI APP</div>
 
                     <div className="card-row">
                         <div className="row-left">
                             <BarChart2 size={18} className="row-icon" />
-                            <span className="row-label">Всего запросов</span>
+                            <span className="row-label">Telegram ID</span>
                         </div>
-                        <div className="row-right">{userData.activity.totalRequests}</div>
+                        <div className="row-right">{userData.telegramId}</div>
                     </div>
                     <div className="divider"></div>
 
                     <div className="card-row">
                         <div className="row-left">
-                            <User size={18} className="row-icon" />
-                            <span className="row-label">С нами с</span>
+                            <Clock size={18} className="row-icon" />
+                            <span className="row-label">Start param</span>
                         </div>
-                        <div className="row-right">{userData.activity.joinedAt}</div>
+                        <div className="row-right">{startParam || '—'}</div>
                     </div>
-                </div>
-
-                {/* Card: Параметры системы */}
-                <div className="info-card interactive-card">
-                    <div className="card-header-title">ПАРАМЕТРЫ СИСТЕМЫ</div>
+                    <div className="divider"></div>
 
                     <div className="card-row">
                         <div className="row-left">
@@ -161,17 +134,22 @@ const ProfilePage = () => {
                             <span className="row-label">Язык интерфейса</span>
                         </div>
                         <div className="row-right clickable">
-                            {userData.settings.language}
+                            {userData.language}
                             <ChevronRight size={16} className="chevron-icon" />
                         </div>
                     </div>
                 </div>
 
+                <div className="info-card interactive-card">
+                    <div className="card-header-title">СТАТУС ИНТЕГРАЦИИ</div>
+                    <div className="row-right" style={{ justifyContent: 'center', textAlign: 'center', color: statusColor }}>
+                        {statusMessage || 'Ожидаем ответ от backend...'}
+                    </div>
+                </div>
             </div>
 
-            {/* Footer (без изменений) */}
             <footer className="profile-footer">
-                CyberMate v0
+                {appName} v0
             </footer>
         </div>
     );

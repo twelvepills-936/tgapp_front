@@ -1,0 +1,88 @@
+import { API_BASE_URL, BOT_USERNAME } from '../config/env.js';
+import { getTelegramWebApp } from '../lib/telegramWebApp.js';
+
+function resolveApiUrl(pathname) {
+    return new URL(pathname, `${API_BASE_URL}/`).toString();
+}
+
+function encodeBase64(value) {
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+
+    bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+    });
+
+    return window.btoa(binary);
+}
+
+export async function registerTelegramUser() {
+    const tg = getTelegramWebApp();
+
+    if (!tg?.initData) {
+        throw new Error('Telegram initData not found. Open this Mini App inside Telegram.');
+    }
+
+    const res = await fetch(resolveApiUrl('/v1/register'), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({
+            initDataRaw: encodeBase64(tg.initData),
+            startParam: tg.initDataUnsafe?.start_param ?? '',
+        }),
+    });
+
+    if (!res.ok) {
+        throw new Error((await res.text()) || 'Failed to register Telegram user.');
+    }
+
+    return res.json();
+}
+
+export async function getMyProfile() {
+    const tg = getTelegramWebApp();
+    const telegramId = tg?.initDataUnsafe?.user?.id;
+
+    if (!telegramId) {
+        throw new Error('Telegram user id not found.');
+    }
+
+    const res = await fetch(resolveApiUrl(`/v1/users/telegram/${telegramId}`), {
+        headers: {
+            Accept: 'application/json',
+        },
+    });
+
+    if (res.status === 404) {
+        return null;
+    }
+
+    if (!res.ok) {
+        throw new Error((await res.text()) || 'Failed to load Telegram profile.');
+    }
+
+    return res.json();
+}
+
+export function normalizeProfileResponse(payload, telegramUser) {
+    const profile = payload?.data ?? payload ?? {};
+
+    return {
+        backendId: profile?.id ? String(profile.id) : '',
+        telegramId: telegramUser?.id ? String(telegramUser.id) : '',
+        name: profile?.name ?? telegramUser?.first_name ?? 'Telegram User',
+        surname: profile?.surname ?? telegramUser?.last_name ?? '',
+        username: telegramUser?.username ?? profile?.surname ?? '',
+        avatarUrl: telegramUser?.photo_url ?? '',
+        language: telegramUser?.language_code ?? 'ru',
+    };
+}
+
+export function buildReferralLink(telegramUser, startParam = '') {
+    const referralCode = telegramUser?.id ? `ref_${telegramUser.id}` : (startParam || 'ref_demo');
+
+    return `https://t.me/${BOT_USERNAME}?startapp=${referralCode}`;
+}
