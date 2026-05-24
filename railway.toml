@@ -2,6 +2,8 @@
 buildCommand = "npm install --include=dev && npm run build"
 
 [deploy]
-startCommand = "serve dist -s -l tcp://0.0.0.0:$PORT"
+startCommand = "node scripts/server.mjs"
 healthcheckPath = "/"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
