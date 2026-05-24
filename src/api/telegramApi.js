@@ -1,9 +1,6 @@
-import { API_BASE_URL, BOT_USERNAME } from '../config/env.js';
+import { BOT_USERNAME } from '../config/env.js';
 import { getTelegramWebApp } from '../lib/telegramWebApp.js';
-
-function resolveApiUrl(pathname) {
-    return new URL(pathname, `${API_BASE_URL}/`).toString();
-}
+import { apiFetch } from './httpClient.js';
 
 function encodeBase64(value) {
     const bytes = new TextEncoder().encode(value);
@@ -41,7 +38,7 @@ export async function registerTelegramUser() {
         throw new Error('Telegram initData not found. Open this Mini App inside Telegram or enable local mock mode.');
     }
 
-    const res = await fetch(resolveApiUrl('/v1/register'), {
+    const res = await apiFetch('/v1/register', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -76,7 +73,7 @@ function getCurrentTelegramId() {
 }
 
 async function fetchTelegramResource(pathname, fallbackMessage) {
-    const res = await fetch(resolveApiUrl(pathname), {
+    const res = await apiFetch(pathname, {
         headers: {
             Accept: 'application/json',
         },
@@ -117,10 +114,87 @@ export async function getMyPromptHistory() {
     return fetchTelegramResource(`/v1/prompts/history/telegram/${telegramId}`, 'Failed to load prompt history.');
 }
 
+export const TEXT_MODEL_IDS = ['yandexgpt', 'gemini-flash', 'openai'];
+export const IMAGE_MODEL_IDS = ['nano-banana'];
+
+export async function generateText({ prompt, model = 'yandexgpt' }) {
+    const telegramId = getCurrentTelegramId();
+    const trimmedPrompt = prompt?.trim();
+    const normalizedModel = TEXT_MODEL_IDS.includes(model) ? model : 'yandexgpt';
+
+    if (!trimmedPrompt) {
+        throw new Error('Prompt is required.');
+    }
+
+    const res = await apiFetch('/v1/generate/text', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({
+            telegramId: String(telegramId),
+            prompt: trimmedPrompt,
+            category: 'text',
+            model: normalizedModel,
+        }),
+    });
+
+    if (!res.ok) {
+        throw new Error((await res.text()) || 'Failed to generate text.');
+    }
+
+    const payload = await res.json();
+    const data = payload?.data ?? payload;
+
+    return {
+        text: data?.text ?? data?.result ?? data?.content ?? '',
+        tokensUsed: data?.tokensUsed ?? data?.tokens ?? null,
+        item: data?.item ?? null,
+    };
+}
+
+export async function generateImage({ prompt, model = 'nano-banana' }) {
+    const telegramId = getCurrentTelegramId();
+    const trimmedPrompt = prompt?.trim();
+    const normalizedModel = IMAGE_MODEL_IDS.includes(model) ? model : 'nano-banana';
+
+    if (!trimmedPrompt) {
+        throw new Error('Prompt is required.');
+    }
+
+    const res = await apiFetch('/v1/generate/image', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({
+            telegramId: String(telegramId),
+            prompt: trimmedPrompt,
+            category: 'image',
+            model: normalizedModel,
+        }),
+    });
+
+    if (!res.ok) {
+        throw new Error((await res.text()) || 'Failed to generate image.');
+    }
+
+    const payload = await res.json();
+    const data = payload?.data ?? payload;
+
+    return {
+        imageUrl: data?.imageUrl ?? data?.image_url ?? '',
+        model: data?.model ?? normalizedModel,
+        tokensUsed: data?.tokensUsed ?? data?.tokens ?? null,
+    };
+}
+
 export async function savePromptHistory({ prompt, category = 'general' }) {
     const telegramId = getCurrentTelegramId();
 
-    const res = await fetch(resolveApiUrl('/v1/prompts/history'), {
+    const res = await apiFetch('/v1/prompts/history', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

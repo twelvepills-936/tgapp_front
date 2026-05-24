@@ -1,21 +1,44 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
-    Brush,
+    Bell,
+    Bot,
+    Check,
     ChevronDown,
-    CirclePlay,
+    ChevronLeft,
+    ChevronRight,
+    Copy,
     Clock3,
     CreditCard,
+    Crown,
+    FileText,
+    History,
     House,
-    Image,
+    Languages,
+    Lock,
+    LogOut,
+    Image as ImageIcon,
+    LayoutGrid,
     Menu,
+    MessageSquare,
+    Mic,
     Moon,
+    MoreHorizontal,
     Music2,
-    Shirt,
+    Plus,
+    Search,
+    Settings,
+    SlidersHorizontal,
+    Send,
+    Sparkles,
+    Trash2,
+    Download,
     SunMedium,
     User,
     Users,
+    Video,
     Wallet,
+    Zap,
 } from 'lucide-react';
 import {
     buildReferralLink,
@@ -24,28 +47,87 @@ import {
     getMyReferrals,
     getMyWallet,
     normalizeProfileResponse,
+    generateImage,
+    generateText,
     registerTelegramUser,
     savePromptHistory,
 } from './api/telegramApi.js';
-import mainPreview from './assets/main.svg';
+import ChatMessageBubble from './Components/ChatMessageBubble.jsx';
+import {
+    IMAGE_MODEL_DEFINITIONS,
+    TEXT_MODEL_DEFINITIONS,
+    catalogSectionsFromModels,
+    getImageModelDefinition,
+    getTextModelDefinition,
+} from './config/aiModels.js';
 import './App.css';
 import { APP_NAME, BOT_USERNAME, ENABLE_TELEGRAM_MOCK } from './config/env.js';
 import { initTelegramMiniApp } from './lib/telegramWebApp.js';
 
 const navigationItems = [
-    { key: 'home', label: 'Home', icon: House },
-    { key: 'wallet', label: 'Wallet', icon: CreditCard },
-    { key: 'referrals', label: 'Referral', icon: Users },
-    { key: 'profile', label: 'Profile', icon: User },
+    { key: 'home', labelKey: 'navHome', icon: House },
+    { key: 'catalog', labelKey: 'navCatalog', icon: LayoutGrid },
+    { key: 'history', labelKey: 'navHistory', icon: History },
+    { key: 'profile', labelKey: 'navProfile', icon: User },
 ];
 
-const categoryItems = [
-    { key: 'images', icon: Image },
-    { key: 'design', icon: Brush },
-    { key: 'music', icon: Music2 },
-    { key: 'video', icon: CirclePlay },
-    { key: 'fashion', icon: Shirt },
+const catalogTabs = [
+    { id: 'all', labelKey: 'catalogTabAll' },
+    { id: 'chat', labelKey: 'catalogTabChat' },
+    { id: 'photo', labelKey: 'catalogTabPhoto' },
+    { id: 'code', labelKey: 'catalogTabCode' },
 ];
+
+const catalogSections = catalogSectionsFromModels;
+
+const homeCategoryChips = [
+    { id: 'all', labelKey: 'chipAll', icon: LayoutGrid },
+    { id: 'chats', labelKey: 'chipChats', icon: MessageSquare },
+    { id: 'images', labelKey: 'chipImages', icon: ImageIcon },
+    { id: 'video', labelKey: 'chipVideo', icon: Video },
+    { id: 'music', labelKey: 'chipMusic', icon: Music2 },
+    { id: 'voice', labelKey: 'chipVoice', icon: Mic },
+];
+
+const homeToolCards = [
+    { id: 'chat', categories: ['chats'], titleKey: 'toolChatTitle', subKey: 'toolChatSub', icon: Bot, accent: 'c1', badge: 'new' },
+    { id: 'images', categories: ['images'], titleKey: 'toolImagesTitle', subKey: 'toolImagesSub', icon: ImageIcon, accent: 'c2', badge: 'hot' },
+    { id: 'video', categories: ['video'], titleKey: 'toolVideoTitle', subKey: 'toolVideoSub', icon: Video, accent: 'c3' },
+    { id: 'music', categories: ['music'], titleKey: 'toolMusicTitle', subKey: 'toolMusicSub', icon: Music2, accent: 'c4' },
+    { id: 'voice', categories: ['voice'], titleKey: 'toolVoiceTitle', subKey: 'toolVoiceSub', icon: Mic, accent: 'c5' },
+    { id: 'text', categories: ['chats'], titleKey: 'toolTextTitle', subKey: 'toolTextSub', icon: FileText, accent: 'c6', page: 'ai-chat' },
+];
+
+const historyFilterTabs = [
+    { id: 'all', labelKey: 'historyFilterAll' },
+    { id: 'photo', labelKey: 'historyFilterPhoto' },
+    { id: 'chat', labelKey: 'historyFilterChat' },
+    { id: 'video', labelKey: 'historyFilterVideo' },
+    { id: 'music', labelKey: 'historyFilterMusic' },
+];
+
+const subscriptionPlanDefs = [
+    { id: 'free', nameKey: 'planFreeName', badgeKey: 'planFreeBadge', badgeClass: 'free', priceKey: 'planFreePrice', priceSubKey: 'planFreePriceSub' },
+    { id: 'pro', nameKey: 'planProName', badgeKey: 'planProBadge', badgeClass: 'popular', priceKey: 'planProPrice', priceSubKey: 'planProPriceSub', popular: true },
+    { id: 'ultra', nameKey: 'planUltraName', badgeKey: 'planUltraBadge', badgeClass: 'biz', priceKey: 'planUltraPrice', priceSubKey: 'planUltraPriceSub' },
+];
+
+function formatTemplate(template, values) {
+    return Object.entries(values).reduce(
+        (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+        template,
+    );
+}
+
+function formatNumber(value) {
+    const numeric = Number(value);
+
+    if (Number.isNaN(numeric)) {
+        return String(value);
+    }
+
+    return new Intl.NumberFormat('ru-RU').format(numeric);
+}
 
 const translations = {
     ru: {
@@ -53,28 +135,114 @@ const translations = {
         releaseBadge: 'Релиз 0.1',
         homeDescription: 'CyberMate — все нейросети в одном месте, под твоим контролем.',
         promptHistory: 'История Промтов',
-        categoriesTitle: 'Категории',
-        categoryLabels: {
-            images: 'Изображения',
-            design: 'Дизайн',
-            music: 'Музыка',
-            video: 'Видео',
-            fashion: 'Одежда',
-        },
-        historyTitle: 'История промтов',
+        homeGreeting: 'Привет, {name} 👋',
+        homeGreetingSub: 'Что будем создавать сегодня?',
+        homeSearchPlaceholder: 'Поиск инструментов...',
+        homeCategoriesLabel: 'Категории',
+        homeToolsLabel: 'Инструменты',
+        chipAll: 'Все',
+        chipChats: 'Чаты',
+        chipImages: 'Изображения',
+        chipVideo: 'Видео',
+        chipMusic: 'Музыка',
+        chipVoice: 'Голос',
+        promoTitle: 'Sora — генерация видео',
+        promoSub: 'Создай ролик из текста за 60 сек',
+        promoButton: 'Попробовать',
+        badgeNew: 'NEW',
+        badgeHot: 'HOT',
+        badgePro: 'PRO',
+        badgeFree: 'FREE',
+        toolChatTitle: 'AI Чат',
+        toolChatSub: 'YandexGPT, Gemini, OpenAI',
+        toolImagesTitle: 'Генерация фото',
+        toolImagesSub: 'Nano Banana',
+        toolVideoTitle: 'Видео',
+        toolVideoSub: 'Runway, Kling AI',
+        toolMusicTitle: 'Музыка',
+        toolMusicSub: 'Suno, Udio',
+        toolVoiceTitle: 'Озвучка',
+        toolVoiceSub: 'ElevenLabs, TTS',
+        toolTextTitle: 'Текст & Код',
+        toolTextSub: 'Рерайт, суммари',
+        navHome: 'Главная',
+        navCatalog: 'Каталог',
+        navHistory: 'История',
+        navProfile: 'Профиль',
+        catalogTitle: 'Каталог',
+        catalogSearchPlaceholder: 'Найти инструмент...',
+        catalogTabAll: 'Все',
+        catalogTabChat: 'Чат',
+        catalogTabPhoto: 'Фото',
+        catalogTabCode: 'Код',
+        catalogSectionChat: 'Чат и текст',
+        catalogSectionPhoto: 'Генерация изображений',
+        catalogEmptyCategory: 'В этой категории пока нет моделей.',
+        modelYandexName: 'YandexGPT',
+        modelYandexSub: 'Текст и диалог на русском',
+        modelGeminiName: 'Gemini Flash',
+        modelGeminiSub: 'Быстрые ответы Google AI',
+        modelOpenAiName: 'OpenAI',
+        modelOpenAiSub: 'Универсальный чат и код',
+        modelNanoBananaName: 'Nano Banana',
+        modelNanoBananaSub: 'Gemini 2.5 Flash Image',
+        imageGenerateTitle: 'Генерация фото',
+        imagePromptLabel: 'Описание',
+        imagePromptPlaceholder: 'Опишите изображение, которое нужно создать...',
+        imageGenerateButton: 'Сгенерировать',
+        imageGenerating: 'Генерация...',
+        imageResultTitle: 'Результат',
+        imageGenerateEmpty: 'Изображение не получено. Попробуйте другой промт.',
+        chatTitle: 'AI Чат',
+        chatEmpty: 'Напишите сообщение — модель ответит здесь.',
+        chatPlaceholder: 'Сообщение...',
+        chatSend: 'Отправить',
+        chatTyping: 'Модель печатает...',
+        chatNewDialog: 'Новый диалог',
+        historyTitle: 'История',
+        historyToday: 'Сегодня',
+        historyYesterday: 'Вчера',
+        historyFilterAll: 'Все',
+        historyFilterPhoto: 'Фото',
+        historyFilterChat: 'Чат',
+        historyFilterVideo: 'Видео',
+        historyFilterMusic: 'Музыка',
+        historyEmpty: 'История промтов пока пуста.',
         promptPlaceholder: 'Введите промт, который хотите сохранить',
         promptCategoryPlaceholder: 'Категория (например, marketing)',
         savePromptButton: 'Сохранить промт',
         promptSaved: 'Промт сохранён в историю.',
         promptEmpty: 'Введите текст промта перед сохранением.',
         settingsTitle: 'Настройки',
+        settingsLanguageSection: 'Язык',
+        settingsAppearanceSection: 'Оформление',
+        settingsLanguageRu: 'Русский',
+        settingsLanguageEn: 'English',
+        settingsSupportSub: 'Написать в Telegram',
         balanceTitle: 'Баланс',
         subscriptionTitle: 'Подписка',
-        walletPageTitle: 'Подписки',
         referralProgramTitle: 'Реферальная программа',
-        referralIntro: 'Товарищи! сложившаяся структура организации в значительной степени обусловливает создание модели развития. Товарищи! новая модель организационной деятельности играет важную роль в формировании существенных финансовых и административных условий. Равным образом реализация намеченных плановых заданий играет важную роль в формировании новых предложений.',
-        referralLinkTitle: 'Реферальная ссылка',
+        referralIntro: 'Приглашайте друзей в CyberMate и получайте CyberCoins за каждого активного пользователя.',
+        referralStatFriends: 'Друзей',
+        referralStatEarned: 'Заработано',
+        referralHowTitle: 'Как это работает',
+        referralHowStep1: 'Поделитесь ссылкой',
+        referralHowStep2: 'Друг регистрируется',
+        referralHowStep3: 'Вы получаете бонус',
+        referralLinkTitle: 'Ваша ссылка',
+        referralCopyButton: 'Копировать',
+        referralCopied: 'Ссылка скопирована',
+        referralEmpty: 'Пока нет активных рефералов.',
         activeReferralsTitle: 'Активные рефералы',
+        walletPageTitle: 'Подписка',
+        walletCurrentPlan: 'Текущий план',
+        walletBalanceTotal: 'Баланс',
+        walletBalanceAvailable: 'Доступно',
+        walletBalanceEarned: 'Всего заработано',
+        walletTransactionsTitle: 'Транзакции',
+        walletTransactionsEmpty: 'Транзакций пока нет.',
+        planSelectButton: 'Выбрать план',
+        planCurrentButton: 'Текущий план',
         languageLabel: 'Language:',
         themeLabel: 'Theme:',
         supportLabel: 'Support',
@@ -102,34 +270,189 @@ const translations = {
         profileSince: 'since:',
         profileLeft: 'left:',
         back: 'Назад',
+        profileTitle: 'Профиль',
+        profilePlanBadge: '{plan} подписка',
+        profileStatRequests: 'Запросов',
+        profileStatProjects: 'Проектов',
+        profileStatCoins: 'CyberCoins',
+        profileBalanceLabel: 'Баланс CyberCoins',
+        profileTopUp: 'Пополнить',
+        profileUsageLabel: 'Использовано в этом месяце',
+        profileAccountSection: 'Аккаунт',
+        profileSettingsSection: 'Настройки',
+        profileMenuSubscription: 'Моя подписка',
+        profileMenuSubscriptionSub: '{plan} · до {date}',
+        profileMenuHistory: 'История запросов',
+        profileMenuHistorySub: '{count} генераций',
+        profileMenuReferrals: 'Рефералы',
+        profileMenuReferralsSub: '{count} друга · +{bonus} монет',
+        profileReferralBonusTag: '+бонус',
+        profileMenuLanguage: 'Язык',
+        profileMenuDarkTheme: 'Тёмная тема',
+        profileMenuLogout: 'Выйти',
+        profilePlansTitle: 'Планы подписки',
+        profilePlansSub: '3 уровня · внутренняя валюта CyberCoins',
+        planFreeName: 'Free',
+        planFreeBadge: 'Бесплатно',
+        planFreePrice: '0 ₽',
+        planFreePriceSub: 'навсегда',
+        planProName: 'Pro',
+        planProBadge: 'Популярный',
+        planProPrice: '299 ₽',
+        planProPriceSub: '/ месяц',
+        planUltraName: 'Ultra',
+        planUltraBadge: 'Для бизнеса',
+        planUltraPrice: '799 ₽',
+        planUltraPriceSub: '/ месяц',
+        planFreeFeatures: [
+            '50 запросов / месяц',
+            'AI Чат (GPT-3.5)',
+            '5 фото генераций',
+        ],
+        planFreeLocked: [
+            'Видео, музыка — нет',
+            'Приоритет — нет',
+        ],
+        planProFeatures: [
+            '1000 запросов / месяц',
+            'GPT-4o, Claude, Gemini',
+            '100 фото (HD)',
+            '20 видео генераций',
+            'Музыка + озвучка',
+            '+500 CyberCoins/мес',
+        ],
+        planUltraFeatures: [
+            'Безлимит запросов',
+            'Все модели + GPT-o1',
+            '500 фото (4K)',
+            '100 видео (Sora, Runway)',
+            'API доступ',
+            '+2000 CyberCoins/мес',
+            'Приоритетная очередь',
+        ],
+        textGenerateTitle: 'Генерация текста',
+        textModelLabel: 'Нейросеть',
+        textPromptLabel: 'Промт',
+        textPromptPlaceholder: 'Опишите, какой текст нужно сгенерировать...',
+        textGenerateButton: 'Сгенерировать',
+        textGenerating: 'Генерация...',
+        textResultTitle: 'Результат',
+        textPromptEmpty: 'Введите промт перед генерацией.',
+        textGenerateEmpty: 'Модель не вернула текст. Попробуйте изменить промт.',
     },
     en: {
         updates: 'Updates',
         releaseBadge: 'Release 0.1',
         homeDescription: 'CyberMate — all AI tools in one place, under your control.',
         promptHistory: 'Prompt History',
-        categoriesTitle: 'Categories',
-        categoryLabels: {
-            images: 'Images',
-            design: 'Design',
-            music: 'Music',
-            video: 'Video',
-            fashion: 'Fashion',
-        },
-        historyTitle: 'Prompt history',
+        homeGreeting: 'Hi, {name} 👋',
+        homeGreetingSub: 'What shall we create today?',
+        homeSearchPlaceholder: 'Search tools...',
+        homeCategoriesLabel: 'Categories',
+        homeToolsLabel: 'Tools',
+        chipAll: 'All',
+        chipChats: 'Chats',
+        chipImages: 'Images',
+        chipVideo: 'Video',
+        chipMusic: 'Music',
+        chipVoice: 'Voice',
+        promoTitle: 'Sora — video generation',
+        promoSub: 'Create a clip from text in 60 sec',
+        promoButton: 'Try it',
+        badgeNew: 'NEW',
+        badgeHot: 'HOT',
+        badgePro: 'PRO',
+        badgeFree: 'FREE',
+        toolChatTitle: 'AI Chat',
+        toolChatSub: 'YandexGPT, Gemini, OpenAI',
+        toolImagesTitle: 'Image generation',
+        toolImagesSub: 'Nano Banana',
+        toolVideoTitle: 'Video',
+        toolVideoSub: 'Runway, Kling AI',
+        toolMusicTitle: 'Music',
+        toolMusicSub: 'Suno, Udio',
+        toolVoiceTitle: 'Voiceover',
+        toolVoiceSub: 'ElevenLabs, TTS',
+        toolTextTitle: 'Text & Code',
+        toolTextSub: 'Rewrite, summary',
+        navHome: 'Home',
+        navCatalog: 'Catalog',
+        navHistory: 'History',
+        navProfile: 'Profile',
+        catalogTitle: 'Catalog',
+        catalogSearchPlaceholder: 'Find a tool...',
+        catalogTabAll: 'All',
+        catalogTabChat: 'Chat',
+        catalogTabPhoto: 'Photo',
+        catalogTabCode: 'Code',
+        catalogSectionChat: 'Chat & text',
+        catalogSectionPhoto: 'Image generation',
+        catalogEmptyCategory: 'No models in this category yet.',
+        modelYandexName: 'YandexGPT',
+        modelYandexSub: 'Russian text and dialogue',
+        modelGeminiName: 'Gemini Flash',
+        modelGeminiSub: 'Fast responses from Google AI',
+        modelOpenAiName: 'OpenAI',
+        modelOpenAiSub: 'General chat and code',
+        modelNanoBananaName: 'Nano Banana',
+        modelNanoBananaSub: 'Gemini 2.5 Flash Image',
+        imageGenerateTitle: 'Image generation',
+        imagePromptLabel: 'Description',
+        imagePromptPlaceholder: 'Describe the image you want to create...',
+        imageGenerateButton: 'Generate',
+        imageGenerating: 'Generating...',
+        imageResultTitle: 'Result',
+        imageGenerateEmpty: 'No image returned. Try a different prompt.',
+        chatTitle: 'AI Chat',
+        chatEmpty: 'Send a message — the model will reply here.',
+        chatPlaceholder: 'Message...',
+        chatSend: 'Send',
+        chatTyping: 'Model is typing...',
+        chatNewDialog: 'New chat',
+        historyTitle: 'History',
+        historyToday: 'Today',
+        historyYesterday: 'Yesterday',
+        historyFilterAll: 'All',
+        historyFilterPhoto: 'Photo',
+        historyFilterChat: 'Chat',
+        historyFilterVideo: 'Video',
+        historyFilterMusic: 'Music',
+        historyEmpty: 'Prompt history is empty.',
         promptPlaceholder: 'Enter a prompt to save',
         promptCategoryPlaceholder: 'Category (for example, marketing)',
         savePromptButton: 'Save prompt',
         promptSaved: 'Prompt saved to history.',
         promptEmpty: 'Enter a prompt before saving.',
         settingsTitle: 'Settings',
+        settingsLanguageSection: 'Language',
+        settingsAppearanceSection: 'Appearance',
+        settingsLanguageRu: 'Русский',
+        settingsLanguageEn: 'English',
+        settingsSupportSub: 'Message on Telegram',
         balanceTitle: 'Balance',
         subscriptionTitle: 'Subscription',
-        walletPageTitle: 'Subscriptions',
         referralProgramTitle: 'Referral program',
-        referralIntro: 'Comrades! the current organizational structure strongly determines the development model. The new organizational model plays an important role in shaping substantial financial and administrative conditions. Likewise, the implementation of planned tasks plays an important role in forming new proposals.',
-        referralLinkTitle: 'Referral link',
+        referralIntro: 'Invite friends to CyberMate and earn CyberCoins for every active user.',
+        referralStatFriends: 'Friends',
+        referralStatEarned: 'Earned',
+        referralHowTitle: 'How it works',
+        referralHowStep1: 'Share your link',
+        referralHowStep2: 'Friend signs up',
+        referralHowStep3: 'You get a bonus',
+        referralLinkTitle: 'Your link',
+        referralCopyButton: 'Copy',
+        referralCopied: 'Link copied',
+        referralEmpty: 'No active referrals yet.',
         activeReferralsTitle: 'Active referrals',
+        walletPageTitle: 'Subscription',
+        walletCurrentPlan: 'Current plan',
+        walletBalanceTotal: 'Balance',
+        walletBalanceAvailable: 'Available',
+        walletBalanceEarned: 'Total earned',
+        walletTransactionsTitle: 'Transactions',
+        walletTransactionsEmpty: 'No transactions yet.',
+        planSelectButton: 'Choose plan',
+        planCurrentButton: 'Current plan',
         languageLabel: 'Language:',
         themeLabel: 'Theme:',
         supportLabel: 'Support',
@@ -157,6 +480,75 @@ const translations = {
         profileSince: 'since:',
         profileLeft: 'left:',
         back: 'Back',
+        profileTitle: 'Profile',
+        profilePlanBadge: '{plan} plan',
+        profileStatRequests: 'Requests',
+        profileStatProjects: 'Projects',
+        profileStatCoins: 'CyberCoins',
+        profileBalanceLabel: 'CyberCoins balance',
+        profileTopUp: 'Top up',
+        profileUsageLabel: 'Used this month',
+        profileAccountSection: 'Account',
+        profileSettingsSection: 'Settings',
+        profileMenuSubscription: 'My subscription',
+        profileMenuSubscriptionSub: '{plan} · until {date}',
+        profileMenuHistory: 'Request history',
+        profileMenuHistorySub: '{count} generations',
+        profileMenuReferrals: 'Referrals',
+        profileMenuReferralsSub: '{count} friends · +{bonus} coins',
+        profileReferralBonusTag: '+bonus',
+        profileMenuLanguage: 'Language',
+        profileMenuDarkTheme: 'Dark theme',
+        profileMenuLogout: 'Log out',
+        profilePlansTitle: 'Subscription plans',
+        profilePlansSub: '3 tiers · CyberCoins internal currency',
+        planFreeName: 'Free',
+        planFreeBadge: 'Free',
+        planFreePrice: '0 ₽',
+        planFreePriceSub: 'forever',
+        planProName: 'Pro',
+        planProBadge: 'Popular',
+        planProPrice: '299 ₽',
+        planProPriceSub: '/ month',
+        planUltraName: 'Ultra',
+        planUltraBadge: 'For business',
+        planUltraPrice: '799 ₽',
+        planUltraPriceSub: '/ month',
+        planFreeFeatures: [
+            '50 requests / month',
+            'AI Chat (GPT-3.5)',
+            '5 image generations',
+        ],
+        planFreeLocked: [
+            'Video, music — unavailable',
+            'Priority — unavailable',
+        ],
+        planProFeatures: [
+            '1000 requests / month',
+            'GPT-4o, Claude, Gemini',
+            '100 images (HD)',
+            '20 video generations',
+            'Music + voiceover',
+            '+500 CyberCoins/mo',
+        ],
+        planUltraFeatures: [
+            'Unlimited requests',
+            'All models + GPT-o1',
+            '500 images (4K)',
+            '100 videos (Sora, Runway)',
+            'API access',
+            '+2000 CyberCoins/mo',
+            'Priority queue',
+        ],
+        textGenerateTitle: 'Text generation',
+        textModelLabel: 'Model',
+        textPromptLabel: 'Prompt',
+        textPromptPlaceholder: 'Describe the text you want to generate...',
+        textGenerateButton: 'Generate',
+        textGenerating: 'Generating...',
+        textResultTitle: 'Result',
+        textPromptEmpty: 'Enter a prompt before generating.',
+        textGenerateEmpty: 'The model returned no text. Try changing the prompt.',
     },
 };
 
@@ -232,6 +624,20 @@ function App() {
     const [theme, setTheme] = useState(getInitialTheme);
     const [language, setLanguage] = useState(getInitialLanguage);
     const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+    const [textPrompt, setTextPrompt] = useState('');
+    const [textModel, setTextModel] = useState('yandexgpt');
+    const [imageModel, setImageModel] = useState('nano-banana');
+    const [imagePrompt, setImagePrompt] = useState('');
+    const [generatedImageUrl, setGeneratedImageUrl] = useState('');
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatReturnPage, setChatReturnPage] = useState('catalog');
+    const [imageReturnPage, setImageReturnPage] = useState('catalog');
+    const [isGeneratingText, setIsGeneratingText] = useState(false);
+    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+    const [homeCategoryChip, setHomeCategoryChip] = useState('all');
+    const [catalogTab, setCatalogTab] = useState('all');
+    const [catalogSearch, setCatalogSearch] = useState('');
+    const [historyFilter, setHistoryFilter] = useState('all');
 
     useEffect(() => {
         let isMounted = true;
@@ -350,7 +756,7 @@ function App() {
 
         const loadPageData = async () => {
             try {
-                if (currentPage === 'wallet' && walletData === null) {
+                if ((currentPage === 'wallet' || currentPage === 'profile') && walletData === null) {
                     setPageLoading((prev) => ({ ...prev, wallet: true }));
                     const data = await getMyWallet();
                     if (!isCancelled) {
@@ -358,7 +764,7 @@ function App() {
                     }
                 }
 
-                if (currentPage === 'referrals' && referralData === null) {
+                if ((currentPage === 'referrals' || currentPage === 'profile') && referralData === null) {
                     setPageLoading((prev) => ({ ...prev, referrals: true }));
                     const data = await getMyReferrals();
                     if (!isCancelled) {
@@ -366,7 +772,7 @@ function App() {
                     }
                 }
 
-                if (currentPage === 'history' && promptHistoryData === null) {
+                if ((currentPage === 'history' || currentPage === 'profile') && promptHistoryData === null) {
                     setPageLoading((prev) => ({ ...prev, history: true }));
                     const data = await getMyPromptHistory();
                     if (!isCancelled) {
@@ -381,9 +787,9 @@ function App() {
                 if (!isCancelled) {
                     setPageLoading((prev) => ({
                         ...prev,
-                        wallet: currentPage === 'wallet' ? false : prev.wallet,
-                        referrals: currentPage === 'referrals' ? false : prev.referrals,
-                        history: currentPage === 'history' ? false : prev.history,
+                        wallet: currentPage === 'wallet' || currentPage === 'profile' ? false : prev.wallet,
+                        referrals: currentPage === 'referrals' || currentPage === 'profile' ? false : prev.referrals,
+                        history: currentPage === 'history' || currentPage === 'profile' ? false : prev.history,
                     }));
                 }
             }
@@ -414,11 +820,240 @@ function App() {
     }, [referralData, language]);
     const historyItems = Array.isArray(promptHistoryData?.items) ? promptHistoryData.items : [];
     const walletTransactions = Array.isArray(walletData?.transactions) ? walletData.transactions : [];
-    const activeNavKey = currentPage === 'settings'
+    const activeNavKey = currentPage === 'settings' || currentPage === 'wallet' || currentPage === 'referrals'
         ? 'profile'
-        : currentPage === 'history'
-            ? 'home'
-            : currentPage;
+        : currentPage === 'ai-chat' || currentPage === 'ai-image'
+            ? 'catalog'
+            : ['home', 'catalog', 'history', 'profile'].includes(currentPage)
+                ? currentPage
+                : 'home';
+
+    const showBottomNav = !['ai-chat', 'ai-image', 'settings', 'wallet', 'referrals'].includes(currentPage);
+
+    const toolMatchesCatalogTab = (tool, tab) => tab === 'all' || tool.tab === tab || tool.categories?.includes(tab);
+
+    const catalogSearchQuery = catalogSearch.trim().toLowerCase();
+
+    const filteredCatalogSections = catalogSections
+        .map((section) => ({
+            ...section,
+            tools: section.tools.filter((tool) => {
+                const matchesTab = toolMatchesCatalogTab(tool, catalogTab);
+                const matchesSearch = !catalogSearchQuery
+                    || text[tool.nameKey].toLowerCase().includes(catalogSearchQuery)
+                    || text[tool.subKey].toLowerCase().includes(catalogSearchQuery);
+                return matchesTab && matchesSearch;
+            }),
+        }))
+        .filter((section) => section.tools.length > 0);
+
+    const getCatalogBadgeLabel = (badge) => {
+        if (badge === 'hot') return text.badgeHot;
+        if (badge === 'new') return text.badgeNew;
+        if (badge === 'pro') return text.badgePro;
+        if (badge === 'free') return text.badgeFree;
+        return '';
+    };
+
+    const filteredHistoryItems = useMemo(() => {
+        if (historyFilter === 'all') {
+            return historyItems;
+        }
+
+        return historyItems.filter((item) => {
+            const category = String(item.category || '').toLowerCase();
+
+            if (historyFilter === 'chat') {
+                return category.includes('chat') || category.includes('text') || category === 'gpt';
+            }
+            if (historyFilter === 'photo') {
+                return category.includes('photo') || category.includes('image');
+            }
+            if (historyFilter === 'video') {
+                return category.includes('video');
+            }
+            if (historyFilter === 'music') {
+                return category.includes('music') || category.includes('audio');
+            }
+
+            return category.includes(historyFilter);
+        });
+    }, [historyItems, historyFilter]);
+
+    const historyGroups = useMemo(() => {
+        const todayItems = [];
+        const yesterdayItems = [];
+        const otherItems = [];
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfYesterday = new Date(startOfToday);
+        startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+
+        filteredHistoryItems.forEach((item) => {
+            const createdAt = item.createdAt ? new Date(item.createdAt) : null;
+
+            if (!createdAt || Number.isNaN(createdAt.getTime())) {
+                todayItems.push(item);
+                return;
+            }
+
+            if (createdAt >= startOfToday) {
+                todayItems.push(item);
+            } else if (createdAt >= startOfYesterday) {
+                yesterdayItems.push(item);
+            } else {
+                otherItems.push(item);
+            }
+        });
+
+        const groups = [];
+
+        if (todayItems.length > 0) {
+            groups.push({ id: 'today', label: text.historyToday, items: todayItems });
+        }
+        if (yesterdayItems.length > 0) {
+            groups.push({ id: 'yesterday', label: text.historyYesterday, items: yesterdayItems });
+        }
+        if (otherItems.length > 0) {
+            groups.push({
+                id: 'older',
+                label: language === 'ru' ? 'Ранее' : 'Earlier',
+                items: otherItems,
+            });
+        }
+
+        return groups;
+    }, [filteredHistoryItems, text.historyToday, text.historyYesterday, language]);
+
+    const formatHistoryTime = (createdAt) => {
+        if (!createdAt) {
+            return '';
+        }
+
+        const date = new Date(createdAt);
+
+        if (Number.isNaN(date.getTime())) {
+            return '';
+        }
+
+        return date.toLocaleTimeString(language === 'ru' ? 'ru-RU' : 'en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    };
+
+    const getHistoryVisual = (category) => {
+        const value = String(category || '').toLowerCase();
+        const allModels = [...TEXT_MODEL_DEFINITIONS, ...IMAGE_MODEL_DEFINITIONS];
+        const modelFromCategory = allModels.find((model) => (
+            value === model.id || value.includes(model.id)
+        ));
+
+        if (modelFromCategory) {
+            return {
+                accent: modelFromCategory.accent,
+                icon: modelFromCategory.icon,
+                toolName: text[modelFromCategory.nameKey],
+                emoji: null,
+            };
+        }
+
+        if (value.includes('text') || value.includes('chat')) {
+            const fallback = getTextModelDefinition('yandexgpt');
+            return {
+                accent: fallback.accent,
+                icon: fallback.icon,
+                toolName: text[fallback.nameKey],
+                emoji: null,
+            };
+        }
+
+        return { accent: 'violet', icon: Bot, toolName: text.chatTitle, emoji: null };
+    };
+
+    const openAiChat = (modelId, returnPage = currentPage) => {
+        if (modelId) {
+            setTextModel(modelId);
+        }
+        setChatReturnPage(returnPage);
+        setStatusMessage('');
+        setCurrentPage('ai-chat');
+    };
+
+    const openAiImage = (modelId, returnPage = currentPage) => {
+        if (modelId) {
+            setImageModel(modelId);
+        }
+        setImageReturnPage(returnPage);
+        setStatusMessage('');
+        setCurrentPage('ai-image');
+    };
+
+    const handleCatalogToolClick = (tool) => {
+        if (tool.locked) {
+            return;
+        }
+
+        if (tool.page === 'ai-image') {
+            openAiImage(tool.id, 'catalog');
+            return;
+        }
+
+        if (tool.page === 'ai-chat') {
+            openAiChat(tool.id, 'catalog');
+        }
+    };
+
+    const handleGenerateImage = async () => {
+        const trimmedPrompt = imagePrompt.trim();
+
+        if (!trimmedPrompt) {
+            setStatusMessage(text.textPromptEmpty);
+            return;
+        }
+
+        try {
+            setIsGeneratingImage(true);
+            setStatusMessage('');
+            setGeneratedImageUrl('');
+            const response = await generateImage({ prompt: trimmedPrompt, model: imageModel });
+            const imageUrl = response?.imageUrl?.trim() ?? '';
+
+            if (!imageUrl) {
+                setStatusMessage(text.imageGenerateEmpty);
+                return;
+            }
+
+            setGeneratedImageUrl(imageUrl);
+
+            try {
+                const historyResponse = await savePromptHistory({
+                    prompt: trimmedPrompt,
+                    category: imageModel,
+                });
+                const savedItem = historyResponse?.item;
+
+                if (savedItem) {
+                    setPromptHistoryData((prev) => ({
+                        items: [savedItem, ...(Array.isArray(prev?.items) ? prev.items : [])],
+                    }));
+                }
+            } catch {
+                // History save is optional.
+            }
+        } catch (error) {
+            setGeneratedImageUrl('');
+            setStatusMessage(error instanceof Error ? error.message : 'Не удалось сгенерировать изображение.');
+        } finally {
+            setIsGeneratingImage(false);
+        }
+    };
+
+    const handleNewChatDialog = () => {
+        setChatMessages([]);
+        setTextPrompt('');
+        setStatusMessage('');
+    };
 
     const handleReferralLinkCopy = async () => {
         if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
@@ -427,10 +1062,153 @@ function App() {
 
         try {
             await navigator.clipboard.writeText(referralLink);
+            setStatusMessage(text.referralCopied);
         } catch {
             // noop
         }
     };
+
+    const renderConceptPageHeader = (title, onBack) => (
+        <header className="concept-page__header">
+            <button type="button" className="concept-page__back" onClick={onBack}>
+                <ChevronLeft size={16} aria-hidden="true" />
+                {text.back}
+            </button>
+            <h1 className="concept-page__title">{title}</h1>
+            <span className="concept-page__spacer" aria-hidden="true" />
+        </header>
+    );
+
+    const renderSubscriptionPlanCards = (currentPlanId = 'pro') => (
+        subscriptionPlanDefs.map((plan) => {
+            const features = plan.id === 'free'
+                ? text.planFreeFeatures
+                : plan.id === 'pro'
+                    ? text.planProFeatures
+                    : text.planUltraFeatures;
+            const locked = plan.id === 'free' ? text.planFreeLocked : [];
+            const isCurrent = plan.id === currentPlanId;
+
+            return (
+                <article
+                    key={plan.id}
+                    className={`profile-concept__plan-card ${plan.popular ? 'profile-concept__plan-card--popular' : ''} ${isCurrent ? 'profile-concept__plan-card--current' : ''}`}
+                >
+                    {plan.popular ? <span className="profile-concept__plan-glow" aria-hidden="true" /> : null}
+                    <div className="profile-concept__plan-top">
+                        <div>
+                            <div className="profile-concept__plan-name">{text[plan.nameKey]}</div>
+                            <span className={`profile-concept__plan-badge profile-concept__plan-badge--${plan.badgeClass}`}>
+                                {text[plan.badgeKey]}
+                            </span>
+                        </div>
+                        <div className="profile-concept__plan-price">
+                            <span>{text[plan.priceKey]}</span>
+                            <small>{text[plan.priceSubKey]}</small>
+                        </div>
+                    </div>
+                    <div className="profile-concept__plan-features">
+                        {features.map((feature) => (
+                            <div key={feature} className="profile-concept__feat">
+                                <Check size={13} aria-hidden="true" />
+                                {feature}
+                            </div>
+                        ))}
+                        {locked.map((feature) => (
+                            <div key={feature} className="profile-concept__feat profile-concept__feat--muted">
+                                <Lock size={13} aria-hidden="true" />
+                                {feature}
+                            </div>
+                        ))}
+                    </div>
+                    <button
+                        type="button"
+                        className={`subscription-concept__plan-btn ${isCurrent ? 'subscription-concept__plan-btn--current' : ''}`}
+                        disabled={isCurrent}
+                    >
+                        {isCurrent ? text.planCurrentButton : text.planSelectButton}
+                    </button>
+                </article>
+            );
+        })
+    );
+
+    const handleSendChatMessage = async () => {
+        const trimmedPrompt = textPrompt.trim();
+
+        if (!trimmedPrompt) {
+            setStatusMessage(text.textPromptEmpty);
+            return;
+        }
+
+        const userMessage = {
+            id: `user-${Date.now()}`,
+            role: 'user',
+            content: trimmedPrompt,
+        };
+
+        setChatMessages((prev) => [...prev, userMessage]);
+        setTextPrompt('');
+
+        try {
+            setIsGeneratingText(true);
+            setStatusMessage('');
+            const response = await generateText({ prompt: trimmedPrompt, model: textModel });
+            const resultText = response?.text?.trim() ?? '';
+
+            if (!resultText) {
+                setStatusMessage(text.textGenerateEmpty);
+                return;
+            }
+
+            const assistantMessageId = `assistant-${Date.now()}`;
+
+            setChatMessages((prev) => [
+                ...prev,
+                {
+                    id: assistantMessageId,
+                    role: 'assistant',
+                    content: resultText,
+                    isTyping: true,
+                },
+            ]);
+
+            try {
+                const historyResponse = await savePromptHistory({
+                    prompt: trimmedPrompt,
+                    category: textModel,
+                });
+                const savedItem = historyResponse?.item;
+
+                if (savedItem) {
+                    setPromptHistoryData((prev) => ({
+                        items: [savedItem, ...(Array.isArray(prev?.items) ? prev.items : [])],
+                    }));
+                }
+            } catch {
+                // History save is optional for chat flow.
+            }
+        } catch (error) {
+            setStatusMessage(error instanceof Error ? error.message : 'Не удалось получить ответ.');
+        } finally {
+            setIsGeneratingText(false);
+        }
+    };
+
+    const handleChatComposerKeyDown = (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            handleSendChatMessage();
+        }
+    };
+
+    const handleChatMessageTyped = useCallback((messageId) => {
+        setChatMessages((prev) => prev.map((message) => (
+            message.id === messageId
+                ? { ...message, isTyping: false }
+                : message
+        )));
+    }, []);
 
     const handleSavePrompt = async () => {
         const trimmedPrompt = promptDraft.trim();
@@ -461,236 +1239,754 @@ function App() {
         }
     };
 
+    const homeGreetingName = userData.displayName.split(' ')[0] || userData.displayName;
+    const homeGreetingText = text.homeGreeting.replace('{name}', homeGreetingName);
+
+    const visibleToolCards = homeToolCards.filter((card) => (
+        homeCategoryChip === 'all' || card.categories.includes(homeCategoryChip)
+    ));
+
+    const handleToolCardClick = (card) => {
+        if (card.id === 'images') {
+            openAiImage('nano-banana', 'home');
+            return;
+        }
+
+        if (card.page === 'ai-chat' || card.id === 'chat') {
+            openAiChat(textModel, 'home');
+        }
+    };
+
     const renderHomeScreen = () => (
-        <section className="home-screen">
-            <header className="brand-section">
-                <h1 className="brand-title">{APP_NAME}</h1>
+        <section className="home-screen home-screen--concept" aria-label="Главная">
+            <header className="home-concept__header">
+                <div className="home-concept__logo-area">
+                    <div className="home-concept__logo-icon">CM</div>
+                    <span className="home-concept__logo-name">{APP_NAME}</span>
+                </div>
+                <div className="home-concept__header-actions">
+                    <button type="button" className="home-concept__icon-btn" aria-label="Уведомления">
+                        <Bell size={18} />
+                    </button>
+                    <button
+                        type="button"
+                        className="home-concept__icon-btn"
+                        aria-label={text.settingsTitle}
+                        onClick={() => setCurrentPage('settings')}
+                    >
+                        <Settings size={18} />
+                    </button>
+                </div>
             </header>
 
-            <section className="content-section">
-                <h2 className="section-title">{text.updates}</h2>
-                <div className="updates-layout">
-                    <article className="release-card" aria-label={text.releaseBadge}>
-                        <span className="release-badge">{text.releaseBadge}</span>
-                        <img src={mainPreview} alt="Превью интерфейса CyberMate" className="release-image" />
-                    </article>
+            <div className="home-concept__greeting">
+                <h2>{homeGreetingText}</h2>
+                <p>{text.homeGreetingSub}</p>
+            </div>
 
-                    <p className="release-description">{text.homeDescription}</p>
+            <div className="home-concept__search" role="search">
+                <Search size={16} aria-hidden="true" />
+                <span>{text.homeSearchPlaceholder}</span>
+            </div>
+
+            <p className="home-concept__section-label">{text.homeCategoriesLabel}</p>
+            <div className="home-concept__chips" role="tablist" aria-label={text.homeCategoriesLabel}>
+                {homeCategoryChips.map(({ id, labelKey, icon: Icon }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        aria-selected={homeCategoryChip === id}
+                        className={`home-concept__chip ${homeCategoryChip === id ? 'home-concept__chip--active' : ''}`}
+                        onClick={() => setHomeCategoryChip(id)}
+                    >
+                        <Icon size={14} aria-hidden="true" />
+                        {text[labelKey]}
+                    </button>
+                ))}
+            </div>
+
+            <article className="home-concept__promo">
+                <span className="home-concept__promo-glow" aria-hidden="true" />
+                <Sparkles className="home-concept__promo-icon" size={28} aria-hidden="true" />
+                <div className="home-concept__promo-text">
+                    <h3>{text.promoTitle}</h3>
+                    <p>{text.promoSub}</p>
                 </div>
-            </section>
+                <button type="button" className="home-concept__promo-btn">{text.promoButton}</button>
+            </article>
 
-            <button type="button" className="history-pill" onClick={() => setCurrentPage('history')}>
-                <span className="history-pill__label">{text.promptHistory}</span>
-                <span className="history-pill__icon" aria-hidden="true">
-                    <Clock3 size={24} />
-                </span>
-            </button>
+            <p className="home-concept__section-label">{text.homeToolsLabel}</p>
+            <div className="home-concept__grid">
+                {visibleToolCards.map((card) => {
+                    const Icon = card.icon;
+                    const badgeLabel = card.badge === 'new'
+                        ? text.badgeNew
+                        : card.badge === 'hot'
+                            ? text.badgeHot
+                            : null;
 
-            <section className="content-section content-section--categories">
-                <h2 className="section-title">{text.categoriesTitle}</h2>
-                <div className="category-grid">
-                    {categoryItems.map(({ key, icon: Icon }) => {
-                        const label = text.categoryLabels[key];
+                    return (
+                        <button
+                            key={card.id}
+                            type="button"
+                            className={`home-concept__card home-concept__card--${card.accent}`}
+                            onClick={() => handleToolCardClick(card)}
+                        >
+                            {badgeLabel ? (
+                                <span className={`home-concept__badge home-concept__badge--${card.badge}`}>
+                                    {badgeLabel}
+                                </span>
+                            ) : null}
+                            <span className="home-concept__card-icon" aria-hidden="true">
+                                <Icon size={20} />
+                            </span>
+                            <span className="home-concept__card-title">{text[card.titleKey]}</span>
+                            <span className="home-concept__card-sub">{text[card.subKey]}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </section>
+    );
+
+    const renderCatalogScreen = () => (
+        <section className="catalog-screen catalog-screen--concept">
+            <header className="catalog-concept__header">
+                <h1 className="catalog-concept__title">{text.catalogTitle}</h1>
+                <button type="button" className="catalog-concept__filter" aria-label={text.catalogTitle}>
+                    <SlidersHorizontal size={17} aria-hidden="true" />
+                </button>
+            </header>
+
+            <label className="catalog-concept__search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                    type="search"
+                    value={catalogSearch}
+                    onChange={(event) => setCatalogSearch(event.target.value)}
+                    placeholder={text.catalogSearchPlaceholder}
+                />
+            </label>
+
+            <div className="catalog-concept__tabs" role="tablist" aria-label={text.catalogTitle}>
+                {catalogTabs.map(({ id, labelKey }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        aria-selected={catalogTab === id}
+                        className={`catalog-concept__tab ${catalogTab === id ? 'catalog-concept__tab--active' : ''}`}
+                        onClick={() => setCatalogTab(id)}
+                    >
+                        {text[labelKey]}
+                    </button>
+                ))}
+            </div>
+
+            {filteredCatalogSections.length === 0 ? (
+                <p className="catalog-concept__empty">
+                    {catalogSearchQuery
+                        ? (language === 'ru' ? 'Ничего не найдено.' : 'Nothing found.')
+                        : text.catalogEmptyCategory}
+                </p>
+            ) : null}
+
+            {filteredCatalogSections.map((section) => (
+                <div key={section.id} className="catalog-concept__section">
+                    <p className="catalog-concept__section-label">{text[section.labelKey]}</p>
+                    <div className="catalog-concept__grid">
+                        {section.tools.map((tool) => {
+                            const Icon = tool.icon;
+                            const badgeLabel = getCatalogBadgeLabel(tool.badge);
+
+                            return (
+                                <button
+                                    key={tool.id}
+                                    type="button"
+                                    className={`catalog-concept__card ${tool.locked ? 'catalog-concept__card--locked' : ''}`}
+                                    onClick={() => handleCatalogToolClick(tool)}
+                                    disabled={tool.locked}
+                                >
+                                    {tool.locked ? (
+                                        <Lock className="catalog-concept__lock" size={12} aria-hidden="true" />
+                                    ) : badgeLabel ? (
+                                        <span className={`catalog-concept__badge catalog-concept__badge--${tool.badge}`}>
+                                            {badgeLabel}
+                                        </span>
+                                    ) : null}
+                                    <span className={`catalog-concept__icon catalog-concept__icon--${tool.accent}`}>
+                                        <Icon size={17} aria-hidden="true" />
+                                    </span>
+                                    <span className="catalog-concept__name">{text[tool.nameKey]}</span>
+                                    <span className="catalog-concept__sub">{text[tool.subKey]}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+        </section>
+    );
+
+    const renderAiChatScreen = () => {
+        const activeModel = getTextModelDefinition(textModel);
+        const ActiveIcon = activeModel.icon;
+
+        return (
+            <section className="ai-chat-screen ai-chat-screen--concept" aria-label={text.chatTitle}>
+                <header className="ai-chat__header">
+                    <button
+                        type="button"
+                        className="ai-chat__back"
+                        aria-label={text.back}
+                        onClick={() => setCurrentPage(chatReturnPage)}
+                    >
+                        <ArrowLeft size={20} aria-hidden="true" />
+                    </button>
+                    <div className="ai-chat__header-main">
+                        <span className={`ai-chat__model-icon ai-chat__model-icon--${activeModel.accent}`}>
+                            <ActiveIcon size={16} aria-hidden="true" />
+                        </span>
+                        <div>
+                            <h1 className="ai-chat__title">{text[activeModel.nameKey]}</h1>
+                            <p className="ai-chat__subtitle">{text[activeModel.subKey]}</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        className="ai-chat__new"
+                        onClick={handleNewChatDialog}
+                        disabled={isGeneratingText}
+                    >
+                        {text.chatNewDialog}
+                    </button>
+                </header>
+
+                <div className="ai-chat__models" role="tablist" aria-label={text.textModelLabel}>
+                    {TEXT_MODEL_DEFINITIONS.map((model) => {
+                        const ModelIcon = model.icon;
+                        const isActive = textModel === model.id;
 
                         return (
-                            <button key={key} type="button" className="category-tile" aria-label={label} title={label}>
-                                <Icon size={44} />
+                            <button
+                                key={model.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={isActive}
+                                className={`ai-chat__model-chip ${isActive ? 'ai-chat__model-chip--active' : ''}`}
+                                onClick={() => setTextModel(model.id)}
+                                disabled={isGeneratingText}
+                            >
+                                <ModelIcon size={14} aria-hidden="true" />
+                                {text[model.nameKey]}
                             </button>
                         );
                     })}
                 </div>
-            </section>
-        </section>
-    );
 
-    const renderProfileScreen = () => (
-        <section className="profile-screen">
-            <div className="profile-topbar">
-                <button
-                    type="button"
-                    className="profile-menu-button"
-                    aria-label={text.settingsTitle}
-                    onClick={() => setCurrentPage('settings')}
-                >
-                    <Menu size={32} />
-                </button>
-            </div>
-
-            <div className="profile-hero">
-                <div className="profile-avatar">
-                    {userData.avatarUrl ? <img src={userData.avatarUrl} alt={userData.displayName} /> : null}
-                </div>
-                <h2 className="profile-name">{userData.displayName}</h2>
-                <p className="profile-handle">{userData.handle}</p>
-            </div>
-
-            <section className="profile-block">
-                <h3 className="profile-section-title">{text.balanceTitle}</h3>
-                <div className="profile-panel profile-panel--balance">
-                    <div className="profile-panel__icon" aria-hidden="true">
-                        <Wallet size={70} strokeWidth={1.9} />
-                    </div>
-                    <div className="profile-panel__divider" />
-                    <div className="profile-balance-list">
-                        <div className="profile-data-row">
-                            <span>Balance:</span>
-                            <strong>{userData.balance}</strong>
-                        </div>
-                        <div className="profile-data-row">
-                            <span>Tokens:</span>
-                            <strong>{userData.tokens}</strong>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section className="profile-block">
-                <h3 className="profile-section-title">{text.subscriptionTitle}</h3>
-                <div className="profile-panel profile-panel--subscription">
-                    <div className="profile-subscription-list">
-                        <div className="profile-data-row">
-                            <span>{text.profileStatus}</span>
-                            <strong className="profile-data-row__accent">{userData.subscriptionStatus}</strong>
-                        </div>
-                        <div className="profile-data-row">
-                            <span>{text.profileSince}</span>
-                            <strong>{userData.subscriptionSince}</strong>
-                        </div>
-                        <div className="profile-data-row">
-                            <span>{text.profileLeft}</span>
-                            <strong>{userData.subscriptionLeft}</strong>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </section>
-    );
-
-    const renderReferralScreen = () => (
-        <section className="referral-screen">
-            <h2 className="referral-screen__title">{text.referralProgramTitle}</h2>
-
-            <div className="referral-card referral-card--intro">
-                <p className="referral-card__text">{text.referralIntro}</p>
-            </div>
-
-            <div className="referral-section">
-                <h3 className="referral-section__title">{text.referralLinkTitle}</h3>
-                <button type="button" className="referral-card referral-card--link" onClick={handleReferralLinkCopy}>
-                    {referralLink}
-                </button>
-            </div>
-
-            <div className="referral-section referral-section--list">
-                <h3 className="referral-section__title">{text.activeReferralsTitle}</h3>
-                <div className="referral-list-card">
-                    {pageLoading.referrals ? <p className="referral-card__text">{text.loading}</p> : null}
-                    {!pageLoading.referrals && referralItems.length === 0 ? (
-                        <p className="referral-card__text">{language === 'ru' ? 'Пока нет активных рефералов.' : 'No active referrals yet.'}</p>
+                <div className="ai-chat__messages" aria-live="polite">
+                    {chatMessages.length === 0 && !isGeneratingText ? (
+                        <p className="ai-chat__empty">{text.chatEmpty}</p>
                     ) : null}
-                    {referralItems.map((item) => (
-                        <div key={item.id} className="referral-pill">
-                            <div className="referral-pill__avatar" aria-hidden="true" />
-                            <span className="referral-pill__name">{item.name}</span>
-                            <strong className="referral-pill__reward">{item.reward}</strong>
-                        </div>
+                    {chatMessages.map((message) => (
+                        <ChatMessageBubble
+                            key={message.id}
+                            message={message}
+                            onTypingComplete={handleChatMessageTyped}
+                        />
                     ))}
+                    {isGeneratingText ? (
+                        <div className="ai-chat__bubble ai-chat__bubble--assistant ai-chat__bubble--typing">
+                            <span>{text.chatTyping}</span>
+                        </div>
+                    ) : null}
                 </div>
-            </div>
-        </section>
-    );
 
-    const renderWalletScreen = () => (
-        <section className="wallet-screen">
-            <h2 className="wallet-screen__title">{text.walletPageTitle}</h2>
+                <footer className="ai-chat__composer">
+                    <textarea
+                        className="ai-chat__input"
+                        value={textPrompt}
+                        onChange={(event) => setTextPrompt(event.target.value)}
+                        onKeyDown={handleChatComposerKeyDown}
+                        placeholder={text.chatPlaceholder}
+                        rows={2}
+                        disabled={isGeneratingText}
+                    />
+                    <button
+                        type="button"
+                        className="ai-chat__send"
+                        aria-label={text.chatSend}
+                        onClick={handleSendChatMessage}
+                        disabled={isGeneratingText}
+                    >
+                        <Send size={18} aria-hidden="true" />
+                    </button>
+                </footer>
+            </section>
+        );
+    };
 
-            <div className="info-card-shell">
-                <div className="info-list">
-                    <div className="info-list__row">
-                        <span>Balance</span>
-                        <strong>{walletData?.wallet?.balance ?? 0}</strong>
+    const renderAiImageScreen = () => {
+        const activeModel = getImageModelDefinition(imageModel);
+        const ActiveIcon = activeModel.icon;
+
+        return (
+            <section className="ai-image-screen ai-image-screen--concept" aria-label={text.imageGenerateTitle}>
+                <header className="ai-chat__header">
+                    <button
+                        type="button"
+                        className="ai-chat__back"
+                        aria-label={text.back}
+                        onClick={() => setCurrentPage(imageReturnPage)}
+                    >
+                        <ArrowLeft size={20} aria-hidden="true" />
+                    </button>
+                    <div className="ai-chat__header-main">
+                        <span className={`ai-chat__model-icon ai-chat__model-icon--${activeModel.accent}`}>
+                            <ActiveIcon size={16} aria-hidden="true" />
+                        </span>
+                        <div>
+                            <h1 className="ai-chat__title">{text[activeModel.nameKey]}</h1>
+                            <p className="ai-chat__subtitle">{text[activeModel.subKey]}</p>
+                        </div>
                     </div>
-                    <div className="info-list__row">
-                        <span>Available</span>
-                        <strong>{walletData?.wallet?.balanceAvailable ?? 0}</strong>
+                </header>
+
+                <div className="ai-image__body">
+                    <label className="ai-image__label" htmlFor="ai-image-prompt">{text.imagePromptLabel}</label>
+                    <textarea
+                        id="ai-image-prompt"
+                        className="ai-image__prompt"
+                        value={imagePrompt}
+                        onChange={(event) => setImagePrompt(event.target.value)}
+                        placeholder={text.imagePromptPlaceholder}
+                        rows={4}
+                        disabled={isGeneratingImage}
+                    />
+
+                    <button
+                        type="button"
+                        className="ai-image__submit"
+                        onClick={handleGenerateImage}
+                        disabled={isGeneratingImage}
+                    >
+                        {isGeneratingImage ? text.imageGenerating : text.imageGenerateButton}
+                    </button>
+
+                    {generatedImageUrl ? (
+                        <section className="ai-image__result" aria-label={text.imageResultTitle}>
+                            <p className="ai-image__result-label">{text.imageResultTitle}</p>
+                            <img
+                                className="ai-image__preview"
+                                src={generatedImageUrl}
+                                alt={imagePrompt || text.imageGenerateTitle}
+                            />
+                        </section>
+                    ) : null}
+                </div>
+            </section>
+        );
+    };
+
+    const renderProfileScreen = () => {
+        const profileInitials = userData.displayName
+            .split(' ')
+            .filter(Boolean)
+            .map((part) => part[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase() || 'CM';
+        const profileMemberId = userData.telegramId && userData.telegramId !== '—'
+            ? `#CM-${String(userData.telegramId).slice(-4)}`
+            : '#CM-0000';
+        const cyberCoins = Number(walletData?.wallet?.balance ?? userData.balance ?? userData.tokens) || 0;
+        const usageLimit = Number(walletData?.wallet?.monthlyLimit ?? 1000) || 1000;
+        const usageUsed = Number(walletData?.wallet?.usedThisMonth ?? Math.min(620, cyberCoins)) || 0;
+        const usagePercent = Math.min(100, Math.round((usageUsed / usageLimit) * 100));
+        const requestsCount = historyItems.length;
+        const referralsCount = referralItems.length;
+        const referralBonus = referralItems.reduce((sum, item) => {
+            const reward = Number(String(item.reward).replace('+', ''));
+            return sum + (Number.isNaN(reward) ? 0 : reward);
+        }, 0);
+        const subscriptionPlanName = userData.subscriptionStatus || 'Pro';
+        const subscriptionUntil = userData.subscriptionLeft?.includes('.')
+            ? userData.subscriptionLeft
+            : userData.subscriptionSince;
+
+        const toggleTheme = () => {
+            setTheme((prevTheme) => (prevTheme === 'dark' ? 'light' : 'dark'));
+        };
+
+        return (
+            <section className="profile-screen profile-screen--concept" aria-label={text.profileTitle}>
+                <header className="profile-concept__header">
+                    <button type="button" className="profile-concept__back" onClick={() => setCurrentPage('home')}>
+                        <ChevronLeft size={16} aria-hidden="true" />
+                        {text.back}
+                    </button>
+                    <h2 className="profile-concept__header-title">{text.profileTitle}</h2>
+                    <button
+                        type="button"
+                        className="profile-concept__more"
+                        aria-label={text.settingsTitle}
+                        onClick={() => setCurrentPage('settings')}
+                    >
+                        <MoreHorizontal size={18} aria-hidden="true" />
+                    </button>
+                </header>
+
+                <div className="profile-concept__avatar-section">
+                    <div className="profile-concept__avatar">
+                        {userData.avatarUrl ? (
+                            <img src={userData.avatarUrl} alt={userData.displayName} />
+                        ) : (
+                            <span>{profileInitials}</span>
+                        )}
+                        <span className="profile-concept__avatar-crown" aria-hidden="true">👑</span>
                     </div>
-                    <div className="info-list__row">
-                        <span>Total earned</span>
-                        <strong>{walletData?.wallet?.totalEarned ?? 0}</strong>
+                    <h3 className="profile-concept__user-name">{userData.displayName}</h3>
+                    <p className="profile-concept__user-id">{userData.handle} · {profileMemberId}</p>
+                    <div className="profile-concept__plan-badge">
+                        <Zap size={12} aria-hidden="true" />
+                        {formatTemplate(text.profilePlanBadge, { plan: subscriptionPlanName })}
                     </div>
                 </div>
-            </div>
 
-            <div className="referral-section referral-section--list">
-                <h3 className="referral-section__title">Transactions</h3>
-                <div className="referral-list-card">
-                    {pageLoading.wallet ? <p className="referral-card__text">{text.loading}</p> : null}
+                <div className="profile-concept__stats">
+                    <div className="profile-concept__stat">
+                        <div className="profile-concept__stat-val">{formatNumber(requestsCount)}</div>
+                        <div className="profile-concept__stat-label">{text.profileStatRequests}</div>
+                    </div>
+                    <div className="profile-concept__stat">
+                        <div className="profile-concept__stat-val">{formatNumber(12)}</div>
+                        <div className="profile-concept__stat-label">{text.profileStatProjects}</div>
+                    </div>
+                    <div className="profile-concept__stat">
+                        <div className="profile-concept__stat-val">{formatNumber(cyberCoins)}</div>
+                        <div className="profile-concept__stat-label">{text.profileStatCoins}</div>
+                    </div>
+                </div>
+
+                <article className="profile-concept__balance-card">
+                    <div className="profile-concept__balance-top">
+                        <div>
+                            <div className="profile-concept__balance-label">{text.profileBalanceLabel}</div>
+                            <div className="profile-concept__balance-amount">
+                                <span className="profile-concept__coin-icon">C</span>
+                                <span className="profile-concept__balance-num">{formatNumber(cyberCoins)}</span>
+                            </div>
+                        </div>
+                        <button type="button" className="profile-concept__topup-btn" onClick={() => setCurrentPage('wallet')}>
+                            <Plus size={12} aria-hidden="true" />
+                            {text.profileTopUp}
+                        </button>
+                    </div>
+                    <div className="profile-concept__usage">
+                        <div className="profile-concept__usage-row">
+                            <span>{text.profileUsageLabel}</span>
+                            <span>{formatNumber(usageUsed)} / {formatNumber(usageLimit)}</span>
+                        </div>
+                        <div className="profile-concept__bar-track">
+                            <div className="profile-concept__bar-fill" style={{ width: `${usagePercent}%` }} />
+                        </div>
+                    </div>
+                </article>
+
+                <p className="profile-concept__section-lbl">{text.profileAccountSection}</p>
+                <div className="profile-concept__menu-list">
+                    <button type="button" className="profile-concept__menu-item" onClick={() => setCurrentPage('wallet')}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--violet"><Crown size={16} /></span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.profileMenuSubscription}</span>
+                            <span className="profile-concept__menu-sub">
+                                {formatTemplate(text.profileMenuSubscriptionSub, { plan: subscriptionPlanName, date: subscriptionUntil })}
+                            </span>
+                        </span>
+                        <ChevronRight className="profile-concept__menu-arrow" size={16} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="profile-concept__menu-item" onClick={() => setCurrentPage('history')}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--pink"><History size={16} /></span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.profileMenuHistory}</span>
+                            <span className="profile-concept__menu-sub">
+                                {formatTemplate(text.profileMenuHistorySub, { count: requestsCount })}
+                            </span>
+                        </span>
+                        <ChevronRight className="profile-concept__menu-arrow" size={16} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="profile-concept__menu-item" onClick={() => setCurrentPage('referrals')}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--green"><Users size={16} /></span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.profileMenuReferrals}</span>
+                            <span className="profile-concept__menu-sub">
+                                {formatTemplate(text.profileMenuReferralsSub, { count: referralsCount, bonus: referralBonus || 300 })}
+                            </span>
+                        </span>
+                        <span className="profile-concept__menu-tag">{text.profileReferralBonusTag}</span>
+                        <ChevronRight className="profile-concept__menu-arrow" size={16} aria-hidden="true" />
+                    </button>
+                </div>
+
+                <p className="profile-concept__section-lbl">{text.profileSettingsSection}</p>
+                <div className="profile-concept__menu-list profile-concept__menu-list--settings">
+                    <button type="button" className="profile-concept__menu-item" onClick={() => setCurrentPage('settings')}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--muted"><Languages size={16} /></span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.profileMenuLanguage}</span>
+                            <span className="profile-concept__menu-sub">{text.languageNames[language]}</span>
+                        </span>
+                        <ChevronRight className="profile-concept__menu-arrow" size={16} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="profile-concept__menu-item" onClick={toggleTheme}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--muted"><Moon size={16} /></span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.profileMenuDarkTheme}</span>
+                        </span>
+                        <span className={`profile-concept__toggle ${theme === 'dark' ? 'profile-concept__toggle--on' : ''}`} aria-hidden="true">
+                            <span className="profile-concept__toggle-knob" />
+                        </span>
+                    </button>
+                    <button type="button" className="profile-concept__menu-item profile-concept__menu-item--logout">
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--danger"><LogOut size={16} /></span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title profile-concept__menu-title--danger">{text.profileMenuLogout}</span>
+                        </span>
+                    </button>
+                </div>
+
+                <div className="profile-concept__plans">
+                    <h3 className="profile-concept__plans-title">{text.profilePlansTitle}</h3>
+                    <p className="profile-concept__plans-sub">{text.profilePlansSub}</p>
+                    {renderSubscriptionPlanCards(subscriptionPlanName.toLowerCase())}
+                </div>
+            </section>
+        );
+    };
+
+    const renderReferralScreen = () => {
+        const referralsCount = referralItems.length;
+        const referralBonus = referralItems.reduce((sum, item) => {
+            const reward = Number(String(item.reward).replace('+', ''));
+            return sum + (Number.isNaN(reward) ? 0 : reward);
+        }, 0);
+
+        return (
+            <section className="referral-screen referral-screen--concept">
+                {renderConceptPageHeader(text.referralProgramTitle, () => setCurrentPage('profile'))}
+
+                <article className="referral-concept__hero">
+                    <div className="referral-concept__hero-icon">
+                        <Users size={22} aria-hidden="true" />
+                    </div>
+                    <p className="referral-concept__hero-text">{text.referralIntro}</p>
+                    <div className="referral-concept__stats">
+                        <div className="referral-concept__stat">
+                            <span className="referral-concept__stat-val">{formatNumber(referralsCount)}</span>
+                            <span className="referral-concept__stat-label">{text.referralStatFriends}</span>
+                        </div>
+                        <div className="referral-concept__stat">
+                            <span className="referral-concept__stat-val referral-concept__stat-val--gold">
+                                +{formatNumber(referralBonus || 0)}
+                            </span>
+                            <span className="referral-concept__stat-label">{text.referralStatEarned}</span>
+                        </div>
+                    </div>
+                </article>
+
+                <p className="profile-concept__section-lbl">{text.referralHowTitle}</p>
+                <div className="referral-concept__steps">
+                    <div className="referral-concept__step">
+                        <span className="referral-concept__step-num">1</span>
+                        <span>{text.referralHowStep1}</span>
+                    </div>
+                    <div className="referral-concept__step">
+                        <span className="referral-concept__step-num">2</span>
+                        <span>{text.referralHowStep2}</span>
+                    </div>
+                    <div className="referral-concept__step">
+                        <span className="referral-concept__step-num">3</span>
+                        <span>{text.referralHowStep3}</span>
+                    </div>
+                </div>
+
+                <p className="profile-concept__section-lbl">{text.referralLinkTitle}</p>
+                <div className="referral-concept__link-card">
+                    <p className="referral-concept__link-url">{referralLink}</p>
+                    <button type="button" className="referral-concept__copy-btn" onClick={handleReferralLinkCopy}>
+                        <Copy size={14} aria-hidden="true" />
+                        {text.referralCopyButton}
+                    </button>
+                </div>
+
+                <p className="profile-concept__section-lbl">{text.activeReferralsTitle}</p>
+                <div className="profile-concept__menu-list">
+                    {pageLoading.referrals ? (
+                        <p className="referral-concept__empty">{text.loading}</p>
+                    ) : null}
+                    {!pageLoading.referrals && referralItems.length === 0 ? (
+                        <p className="referral-concept__empty">{text.referralEmpty}</p>
+                    ) : null}
+                    {referralItems.map((item) => {
+                        const initial = item.name?.trim()?.[0]?.toUpperCase() || '?';
+
+                        return (
+                            <div key={item.id} className="referral-concept__friend">
+                                <span className="referral-concept__friend-avatar">{initial}</span>
+                                <span className="referral-concept__friend-name">{item.name}</span>
+                                <span className="referral-concept__friend-reward">{item.reward}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </section>
+        );
+    };
+
+    const renderWalletScreen = () => {
+        const cyberCoins = Number(walletData?.wallet?.balance ?? userData.balance ?? 0) || 0;
+        const balanceAvailable = Number(walletData?.wallet?.balanceAvailable ?? cyberCoins) || 0;
+        const totalEarned = Number(walletData?.wallet?.totalEarned ?? 0) || 0;
+        const currentPlanId = (userData.subscriptionStatus || 'pro').toLowerCase();
+
+        return (
+            <section className="wallet-screen wallet-screen--concept">
+                {renderConceptPageHeader(text.walletPageTitle, () => setCurrentPage('profile'))}
+
+                <p className="profile-concept__section-lbl">{text.walletCurrentPlan}</p>
+                <div className="subscription-concept__current">
+                    <Crown size={16} aria-hidden="true" />
+                    <span>{userData.subscriptionStatus || 'Pro'}</span>
+                </div>
+
+                <article className="profile-concept__balance-card subscription-concept__balance">
+                    <div className="subscription-concept__balance-grid">
+                        <div className="subscription-concept__balance-item">
+                            <span className="subscription-concept__balance-label">{text.walletBalanceTotal}</span>
+                            <span className="subscription-concept__balance-value">
+                                <span className="profile-concept__coin-icon">C</span>
+                                {formatNumber(cyberCoins)}
+                            </span>
+                        </div>
+                        <div className="subscription-concept__balance-item">
+                            <span className="subscription-concept__balance-label">{text.walletBalanceAvailable}</span>
+                            <span className="subscription-concept__balance-value">{formatNumber(balanceAvailable)}</span>
+                        </div>
+                        <div className="subscription-concept__balance-item">
+                            <span className="subscription-concept__balance-label">{text.walletBalanceEarned}</span>
+                            <span className="subscription-concept__balance-value subscription-concept__balance-value--gold">
+                                {formatNumber(totalEarned)}
+                            </span>
+                        </div>
+                    </div>
+                </article>
+
+                <div className="profile-concept__plans subscription-concept__plans">
+                    <h3 className="profile-concept__plans-title">{text.profilePlansTitle}</h3>
+                    <p className="profile-concept__plans-sub">{text.profilePlansSub}</p>
+                    {renderSubscriptionPlanCards(currentPlanId)}
+                </div>
+
+                <p className="profile-concept__section-lbl">{text.walletTransactionsTitle}</p>
+                <div className="profile-concept__menu-list">
+                    {pageLoading.wallet ? (
+                        <p className="referral-concept__empty">{text.loading}</p>
+                    ) : null}
                     {!pageLoading.wallet && walletTransactions.length === 0 ? (
-                        <p className="referral-card__text">{language === 'ru' ? 'Транзакций пока нет.' : 'No transactions yet.'}</p>
+                        <p className="referral-concept__empty">{text.walletTransactionsEmpty}</p>
                     ) : null}
                     {walletTransactions.map((item) => (
-                        <div key={item.id} className="referral-pill">
-                            <div className="referral-pill__avatar" aria-hidden="true" />
-                            <span className="referral-pill__name">{item.description || item.type}</span>
-                            <strong className="referral-pill__reward">{`${item.amount > 0 ? '+' : ''}${item.amount}`}</strong>
+                        <div key={item.id} className="subscription-concept__tx">
+                            <span className="subscription-concept__tx-name">{item.description || item.type}</span>
+                            <span className={`subscription-concept__tx-amount ${item.amount < 0 ? 'subscription-concept__tx-amount--minus' : ''}`}>
+                                {`${item.amount > 0 ? '+' : ''}${item.amount}`}
+                            </span>
                         </div>
                     ))}
                 </div>
-            </div>
-        </section>
-    );
+            </section>
+        );
+    };
 
     const renderHistoryScreen = () => (
-        <section className="history-screen">
-            <header className="history-header">
-                <button
-                    type="button"
-                    className="history-back-button"
-                    aria-label={text.back}
-                    onClick={() => setCurrentPage('home')}
-                >
-                    <ArrowLeft size={34} />
-                </button>
-                <h2 className="history-title">{text.historyTitle}</h2>
+        <section className="history-screen history-screen--concept">
+            <header className="history-concept__header">
+                <h1 className="history-concept__title">{text.historyTitle}</h1>
+                <div className="history-concept__actions">
+                    <button type="button" className="history-concept__action" aria-label="Download">
+                        <Download size={17} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="history-concept__action" aria-label="Delete">
+                        <Trash2 size={17} aria-hidden="true" />
+                    </button>
+                </div>
             </header>
 
-            <div className="referral-card referral-card--intro" style={{ display: 'grid', gap: '12px' }}>
-                <textarea
-                    value={promptDraft}
-                    onChange={(event) => setPromptDraft(event.target.value)}
-                    placeholder={text.promptPlaceholder}
-                    rows={4}
-                    style={{ width: '100%', borderRadius: '16px', padding: '12px', resize: 'vertical', border: 'none' }}
-                />
-                <input
-                    value={promptCategory}
-                    onChange={(event) => setPromptCategory(event.target.value)}
-                    placeholder={text.promptCategoryPlaceholder}
-                    style={{ width: '100%', borderRadius: '16px', padding: '12px', border: 'none' }}
-                />
-                <button
-                    type="button"
-                    className="settings-card settings-row settings-row--button"
-                    onClick={handleSavePrompt}
-                    disabled={isSavingPrompt}
-                >
-                    <span className="settings-label">{isSavingPrompt ? text.loading : text.savePromptButton}</span>
-                </button>
-            </div>
-
-            <div className="referral-list-card">
-                {pageLoading.history ? <p className="referral-card__text">{text.loading}</p> : null}
-                {!pageLoading.history && historyItems.length === 0 ? (
-                    <p className="referral-card__text">{language === 'ru' ? 'История промтов пока пуста.' : 'Prompt history is empty.'}</p>
-                ) : null}
-                {historyItems.map((item) => (
-                    <div key={item.id} className="referral-pill">
-                        <div className="referral-pill__avatar" aria-hidden="true" />
-                        <span className="referral-pill__name">{item.prompt}</span>
-                        <strong className="referral-pill__reward">{[item.category, item.createdAt].filter(Boolean).join(' • ')}</strong>
-                    </div>
+            <div className="history-concept__filters" role="tablist" aria-label={text.historyTitle}>
+                {historyFilterTabs.map(({ id, labelKey }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        aria-selected={historyFilter === id}
+                        className={`history-concept__filter ${historyFilter === id ? 'history-concept__filter--active' : ''}`}
+                        onClick={() => setHistoryFilter(id)}
+                    >
+                        {text[labelKey]}
+                    </button>
                 ))}
             </div>
+
+            {pageLoading.history ? (
+                <p className="history-concept__empty">{text.loading}</p>
+            ) : null}
+
+            {!pageLoading.history && historyGroups.length === 0 ? (
+                <p className="history-concept__empty">{text.historyEmpty}</p>
+            ) : null}
+
+            {historyGroups.map((group) => (
+                <div key={group.id} className="history-concept__group">
+                    <p className="history-concept__group-label">{group.label}</p>
+                    <div className="history-concept__list">
+                        {group.items.map((item) => {
+                            const visual = getHistoryVisual(item.category);
+                            const ThumbIcon = visual.icon;
+                            const tagLabel = item.category || (language === 'ru' ? 'Чат' : 'Chat');
+
+                            return (
+                                <article key={item.id} className="history-concept__item">
+                                    <div className={`history-concept__thumb history-concept__thumb--${visual.accent}`}>
+                                        <ThumbIcon size={18} aria-hidden="true" />
+                                    </div>
+                                    <div className="history-concept__info">
+                                        <div className="history-concept__top">
+                                            <span className={`history-concept__tool history-concept__tool--${visual.accent}`}>
+                                                {visual.toolName}
+                                            </span>
+                                            <span className="history-concept__time">{formatHistoryTime(item.createdAt)}</span>
+                                        </div>
+                                        <p className="history-concept__prompt">{item.prompt}</p>
+                                        <div className="history-concept__meta">
+                                            <span className={`history-concept__tag history-concept__tag--${visual.accent}`}>
+                                                {tagLabel}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="history-concept__result" aria-hidden="true">
+                                        {visual.emoji ? (
+                                            <span>{visual.emoji}</span>
+                                        ) : (
+                                            <MessageSquare size={14} />
+                                        )}
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
         </section>
     );
 
@@ -705,82 +2001,61 @@ function App() {
             setTheme((prevTheme) => (prevTheme === 'dark' ? 'light' : 'dark'));
         };
 
-        const switchLanguage = (nextLanguage) => {
-            setLanguage(nextLanguage);
-            setIsLanguageMenuOpen(false);
-        };
+        const languageOptions = [
+            { id: 'ru', label: text.settingsLanguageRu, flag: '🇷🇺' },
+            { id: 'en', label: text.settingsLanguageEn, flag: '🇬🇧' },
+        ];
 
         return (
-            <section className="settings-screen">
-                <header className="settings-header">
-                    <button
-                        type="button"
-                        className="settings-back-button"
-                        aria-label={text.back}
-                        onClick={() => setCurrentPage('profile')}
-                    >
-                        <ArrowLeft size={34} />
-                    </button>
-                    <h2 className="settings-title">{text.settingsTitle}</h2>
-                </header>
+            <section className="settings-screen settings-screen--concept">
+                {renderConceptPageHeader(text.settingsTitle, () => setCurrentPage('profile'))}
 
-                <div className="settings-list">
-                    <div className="settings-card">
-                        <button
-                            type="button"
-                            className="settings-row"
-                            aria-expanded={isLanguageMenuOpen}
-                            onClick={() => setIsLanguageMenuOpen((prevState) => !prevState)}
-                        >
-                            <span className="settings-label">{text.languageLabel}</span>
-                            <span className="settings-value">
-                                <span>{text.languageNames[language]}</span>
-                                <ChevronDown
-                                    size={24}
-                                    className={`settings-chevron ${isLanguageMenuOpen ? 'settings-chevron--open' : ''}`}
-                                />
-                            </span>
-                        </button>
+                <p className="profile-concept__section-lbl">{text.settingsLanguageSection}</p>
+                <div className="settings-concept__lang-grid">
+                    {languageOptions.map((option) => {
+                        const isActive = language === option.id;
 
-                        {isLanguageMenuOpen ? (
-                            <div className="settings-options">
-                                {['ru', 'en'].map((langCode) => (
-                                    <button
-                                        key={langCode}
-                                        type="button"
-                                        className={`settings-option ${language === langCode ? 'settings-option--active' : ''}`}
-                                        onClick={() => switchLanguage(langCode)}
-                                    >
-                                        {text.languageNames[langCode]}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
-
-                    <button type="button" className="settings-card settings-row settings-row--button" onClick={toggleTheme}>
-                        <span className="settings-label">{text.themeLabel}</span>
-                        <span className="settings-value">
-                            <span className={`settings-theme-toggle settings-theme-toggle--${theme}`} aria-hidden="true">
-                                <span className="settings-theme-toggle__knob">
-                                    {theme === 'dark' ? <Moon size={14} /> : <SunMedium size={14} />}
-                                </span>
-                            </span>
-                            <span>{text.themeNames[theme]}</span>
-                            <ChevronDown size={24} className="settings-chevron" />
-                        </span>
-                    </button>
-
-                    <button
-                        type="button"
-                        className="settings-card settings-row settings-row--button settings-row--support"
-                        onClick={handleSupportClick}
-                    >
-                        <span className="settings-label">{text.supportLabel}</span>
-                    </button>
+                        return (
+                            <button
+                                key={option.id}
+                                type="button"
+                                className={`settings-concept__lang-card ${isActive ? 'settings-concept__lang-card--active' : ''}`}
+                                aria-pressed={isActive}
+                                onClick={() => setLanguage(option.id)}
+                            >
+                                <span className="settings-concept__lang-flag" aria-hidden="true">{option.flag}</span>
+                                <span className="settings-concept__lang-label">{option.label}</span>
+                                {isActive ? <Check className="settings-concept__lang-check" size={16} aria-hidden="true" /> : null}
+                            </button>
+                        );
+                    })}
                 </div>
 
-                <div className="settings-footer">{APP_NAME}</div>
+                <p className="profile-concept__section-lbl">{text.settingsAppearanceSection}</p>
+                <div className="profile-concept__menu-list">
+                    <button type="button" className="profile-concept__menu-item" onClick={toggleTheme}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--muted">
+                            {theme === 'dark' ? <Moon size={16} /> : <SunMedium size={16} />}
+                        </span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.themeLabel.replace(':', '')}</span>
+                            <span className="profile-concept__menu-sub">{text.themeNames[theme]}</span>
+                        </span>
+                        <span className={`profile-concept__toggle ${theme === 'dark' ? 'profile-concept__toggle--on' : ''}`} aria-hidden="true">
+                            <span className="profile-concept__toggle-knob" />
+                        </span>
+                    </button>
+                    <button type="button" className="profile-concept__menu-item" onClick={handleSupportClick}>
+                        <span className="profile-concept__menu-ico profile-concept__menu-ico--green">
+                            <MessageSquare size={16} />
+                        </span>
+                        <span className="profile-concept__menu-text">
+                            <span className="profile-concept__menu-title">{text.supportLabel}</span>
+                            <span className="profile-concept__menu-sub">{text.settingsSupportSub}</span>
+                        </span>
+                        <ChevronRight className="profile-concept__menu-arrow" size={16} aria-hidden="true" />
+                    </button>
+                </div>
             </section>
         );
     };
@@ -830,7 +2105,7 @@ function App() {
     };
 
     return (
-        <div className="app-shell">
+        <div className="app-shell" data-page={currentPage}>
             <main className="app-main">
                 {statusMessage ? (
                     <div className="referral-card referral-card--intro" style={{ marginBottom: '16px' }}>
@@ -839,43 +2114,52 @@ function App() {
                 ) : null}
                 {currentPage === 'home'
                     ? renderHomeScreen()
-                    : currentPage === 'profile'
-                        ? renderProfileScreen()
-                        : currentPage === 'settings'
-                            ? renderSettingsScreen()
-                            : currentPage === 'referrals'
-                                ? renderReferralScreen()
-                                : currentPage === 'wallet'
-                                    ? renderWalletScreen()
-                                    : currentPage === 'history'
-                                        ? renderHistoryScreen()
-                                        : renderInfoScreen()}
+                    : currentPage === 'catalog'
+                        ? renderCatalogScreen()
+                        : currentPage === 'profile'
+                            ? renderProfileScreen()
+                            : currentPage === 'settings'
+                                ? renderSettingsScreen()
+                                : currentPage === 'referrals'
+                                    ? renderReferralScreen()
+                                    : currentPage === 'wallet'
+                                        ? renderWalletScreen()
+                                        : currentPage === 'history'
+                                            ? renderHistoryScreen()
+                                            : currentPage === 'ai-chat'
+                                                ? renderAiChatScreen()
+                                                : currentPage === 'ai-image'
+                                                    ? renderAiImageScreen()
+                                                    : renderInfoScreen()}
             </main>
 
-            <nav className="bottom-nav" aria-label="Основная навигация">
-                <div className="bottom-nav__inner">
-                    {navigationItems.map(({ key, label, icon: Icon }) => {
-                        const isActive = activeNavKey === key;
+            {showBottomNav ? (
+                <nav className="bottom-nav bottom-nav--concept" aria-label={language === 'ru' ? 'Основная навигация' : 'Main navigation'}>
+                    <div className="bottom-nav__inner">
+                        {navigationItems.map(({ key, labelKey, icon: Icon }) => {
+                            const isActive = activeNavKey === key;
+                            const label = text[labelKey];
 
-                        return (
-                            <button
-                                key={key}
-                                type="button"
-                                className={`nav-button ${isActive ? 'nav-button--active' : ''}`}
-                                aria-label={label}
-                                aria-current={isActive ? 'page' : undefined}
-                                onClick={() => {
-                                    setCurrentPage(key);
-                                    setIsLanguageMenuOpen(false);
-                                }}
-                            >
-                                <Icon size={36} />
-                                <span className="sr-only">{label}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </nav>
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    className={`nav-button ${isActive ? 'nav-button--active' : ''}`}
+                                    aria-label={label}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    onClick={() => {
+                                        setCurrentPage(key);
+                                        setIsLanguageMenuOpen(false);
+                                    }}
+                                >
+                                    <Icon size={19} aria-hidden="true" />
+                                    <span className="nav-button__label">{label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </nav>
+            ) : null}
         </div>
     );
 }

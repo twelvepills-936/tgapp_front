@@ -1,5 +1,9 @@
 import { ENABLE_TELEGRAM_MOCK } from '../config/env.js';
 
+function hasTelegramUser(tg) {
+    return Boolean(tg?.initDataUnsafe?.user?.id);
+}
+
 function buildMockInitData(user, startParam) {
     const params = new URLSearchParams();
 
@@ -40,11 +44,19 @@ export function getTelegramWebApp() {
         return null;
     }
 
-    if (window.Telegram?.WebApp) {
-        return window.Telegram.WebApp;
+    const telegramWebApp = window.Telegram?.WebApp ?? null;
+    const shouldUseMock = ENABLE_TELEGRAM_MOCK
+        || (import.meta.env.DEV && telegramWebApp && !hasTelegramUser(telegramWebApp));
+
+    if (telegramWebApp && hasTelegramUser(telegramWebApp) && !ENABLE_TELEGRAM_MOCK) {
+        return telegramWebApp;
     }
 
-    return ENABLE_TELEGRAM_MOCK ? createBrowserMock() : null;
+    if (shouldUseMock) {
+        return createBrowserMock();
+    }
+
+    return telegramWebApp;
 }
 
 export function initTelegramMiniApp() {
